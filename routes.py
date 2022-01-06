@@ -100,7 +100,7 @@ def signup():
 def create_post(current_user):
     data = request.form
 
-    title, description, user_id = data.get('title'), data.get('description'), data.get('user_id')
+    title, description, user_id = data.get('title'), data.get('description'), int(data.get('user_id'))
 
     if user_id == current_user.id:
         post = Post(
