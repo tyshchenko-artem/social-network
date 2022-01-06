@@ -1,7 +1,7 @@
 from flask import Flask
 
-from app.extensions import db
-from app.routes import net
+from extensions import db
+from routes import net
 
 
 def create_app(config='settings.py'):
@@ -9,8 +9,11 @@ def create_app(config='settings.py'):
 
     app.config.from_pyfile(config)
 
+    app.register_blueprint(net)
+
     db.init_app(app)
 
-    app.register_blueprint(net)
+    with app.app_context():
+        db.create_all()
 
     return app
