@@ -19,15 +19,14 @@ def token_required(f):
         token = None
         if 'x-access-tokens' in request.headers:
             token = request.headers['x-access-tokens']
-
         if not token:
             return jsonify({'message': 'a valid token is missing'})
+
         try:
             data = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
             current_user = User.query.filter_by(public_id=data['public_id']).first()
         except:
             return jsonify({'message': 'token is invalid'})
-
         return f(current_user, *args, **kwargs)
 
     return decorator
@@ -35,9 +34,7 @@ def token_required(f):
 
 def update_user_last_activity(user_id):
     user = User.query.filter_by(id=user_id).first()
-
     user.datetime_last_activity = datetime.now()
-
     db.session.commit()
 
 
@@ -83,9 +80,7 @@ def login():
 @net.route('/sign_up', methods=['POST'])
 def signup():
     data = request.form
-
-    name, email = data.get('name'), data.get('email')
-    password = data.get('password')
+    name, email, password = data.get('name'), data.get('email'), data.get('password')
 
     user = User.query.filter_by(email=email).first()
 
@@ -106,7 +101,7 @@ def signup():
             'exp': datetime.utcnow() + timedelta(minutes=30)
         }, SECRET_KEY, "HS256")
 
-        return make_response({'token': token}, 201)
+        return make_response(jsonify({'token': token}), 201)
     else:
         return make_response('User already exists. Please Log in.', 202)
 
@@ -115,8 +110,7 @@ def signup():
 @token_required
 def create_post(current_user):
     data = request.form
-
-    title, description, user_id = data.get('title'), data.get('description'), int(data.get('user_id'))
+    title, description, user_id = data.get('title'), data.get('description'), data.get('user_id')
 
     if user_id == current_user.id:
         post = Post(
@@ -131,30 +125,29 @@ def create_post(current_user):
 
         return make_response('Post successfully created.', 201)
     else:
-        return make_response('User id isn`t valid', 403)
+        return make_response('User id isn`t valid.', 403)
 
 
 @net.route('/post/like', methods=['POST'])
 @token_required
 def like_post(current_user):
     data = request.form
-
-    user_id, post_id = int(data.get('user_id')), int(data.get('post_id'))
+    user_id, post_id = data.get('user_id'), data.get('post_id')
 
     if user_id != current_user.id:
-        return make_response('User id isn`t valid', 403)
+        return make_response('User id isn`t valid.', 403)
 
     update_user_last_activity(user_id)
 
     like = Like.query.filter_by(user_id=user_id, post_id=post_id).first()
 
     if like:
-        return make_response('Like is already present', 202)
+        return make_response('Like is already present.', 202)
 
     post = Post.query.filter_by(id=post_id).first()
 
     if not post:
-        return make_response('Post doesn`t exist', 202)
+        return make_response('Post doesn`t exist.', 404)
 
     like = Like(
         user_id=user_id,
@@ -171,11 +164,10 @@ def like_post(current_user):
 @token_required
 def unlike_post(current_user):
     data = request.form
-
-    user_id, post_id = int(data.get('user_id')), int(data.get('post_id'))
+    user_id, post_id = data.get('user_id'), data.get('post_id')
 
     if user_id != current_user.id:
-        return make_response('User id isn`t valid', 403)
+        return make_response('User id isn`t valid.', 403)
 
     update_user_last_activity(user_id)
 
@@ -185,18 +177,46 @@ def unlike_post(current_user):
         db.session.delete(like)
         db.session.commit()
 
-        return make_response('You removed like', 200)
+        return make_response('You removed like.', 200)
 
-    return make_response('Like isn`t present', 202)
+    return make_response('Like isn`t present.', 404)
 
 
 @net.route('/analytics', methods=['GET'])
 @token_required
 def analytics_likes(current_user):
-    pass
+    try:
+        date_from = datetime.strptime(request.args.get('date_from'), '%Y-%m-%d').date()
+        date_to = datetime.strptime(request.args.get('date_to'), '%Y-%m-%d').date()
+
+        likes_between_user_dates = Like.query.filter(Like.created_date.between(date_from, date_to)).all()
+
+        response_dict = {}
+
+        for like in likes_between_user_dates:
+            str_like_created_date = str(like.created_date)
+            if str_like_created_date in response_dict:
+                counter = response_dict.get(str_like_created_date)
+                counter += 1
+                response_dict[str_like_created_date] = counter
+            else:
+                response_dict[str_like_created_date] = 1
+
+        return make_response(jsonify(response_dict), 200)
+
+    except ValueError:
+        return make_response('Bad request.', 400)
+    except TypeError:
+        return make_response('Bad request.', 400)
 
 
 @net.route('/analytics/<user_id>', methods=['GET'])
 @token_required
-def analytics_user(current_user):
-    pass
+def analytics_user(current_user, user_id):
+    user = User.query.filter_by(id=user_id).first()
+
+    if not user:
+        return make_response('User does not exist.', 404)
+
+    return make_response(jsonify({'last user activity': user.datetime_last_activity,
+                                  'last user login': user.datetime_last_login}), 200)
